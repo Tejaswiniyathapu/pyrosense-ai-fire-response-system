@@ -1,0 +1,1543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PYROSENSE — AI Fire Emergency Response System</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Mono:ital,wght@0,400;0,700;1,400&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+:root{
+  --fire:#FF3B1F;--ember:#FF8C00;--smoke:#0e0f11;
+  --ash:#181b1f;--ash2:#21252b;--ash3:#2a2f37;
+  --pale:#e8e4db;--muted:#5a606b;--muted2:#888e9a;
+  --green:#00FF87;--blue:#1e90ff;--yellow:#FFD600;
+  --purple:#a855f7;--cyan:#00d4ff;--panel-w:390px;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{height:100%;overflow:hidden;}
+body{background:var(--smoke);color:var(--pale);font-family:'DM Sans',sans-serif;cursor:crosshair;}
+::-webkit-scrollbar{width:3px;height:3px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:rgba(255,59,31,0.5);border-radius:2px;}
+
+/* ══ HEADER ══ */
+header{
+  position:fixed;top:0;left:0;right:0;z-index:2000;height:54px;
+  display:flex;align-items:center;justify-content:space-between;padding:0 20px;
+  background:rgba(14,15,17,0.98);border-bottom:1px solid rgba(255,59,31,0.18);
+  backdrop-filter:blur(16px);
+}
+.logo{display:flex;align-items:center;gap:11px;}
+.logo-mark{width:34px;height:34px;background:var(--fire);border-radius:7px;
+  display:flex;align-items:center;justify-content:center;font-size:17px;
+  animation:lp 2.5s ease-in-out infinite;}
+@keyframes lp{0%,100%{box-shadow:0 0 0 0 rgba(255,59,31,0.6);}60%{box-shadow:0 0 0 10px rgba(255,59,31,0);}}
+.logo-name{font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:3px;}
+.logo-name em{color:var(--fire);font-style:normal;}
+.logo-sub{font-family:'Space Mono',monospace;font-size:7px;color:var(--muted);letter-spacing:2px;margin-top:-2px;}
+.hdr-right{display:flex;gap:8px;align-items:center;}
+.pill{display:flex;align-items:center;gap:5px;padding:4px 11px;border-radius:20px;
+  background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);
+  font-family:'Space Mono',monospace;font-size:8px;color:var(--muted);letter-spacing:1px;}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--green);animation:blink 1.8s infinite;}
+.dot.red{background:var(--fire);animation:blink 0.45s infinite;}
+.dot.yel{background:var(--yellow);animation:blink 1s infinite;}
+.dot.blu{background:var(--blue);animation:blink 1.2s infinite;}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:0.15;}}
+#incPill,#multiPill,#wthPill{display:none;}
+
+/* ══ LAYOUT ══ */
+.layout{display:flex;height:100vh;padding-top:54px;}
+
+/* ══ ICON NAV ══ */
+.iconav{
+  width:50px;background:var(--ash);border-right:1px solid rgba(255,255,255,0.04);
+  display:flex;flex-direction:column;align-items:center;padding:14px 0;gap:3px;
+  z-index:100;flex-shrink:0;
+}
+.itab{width:38px;height:38px;border-radius:8px;border:none;background:transparent;
+  color:var(--muted);font-size:17px;cursor:pointer;transition:all 0.18s;
+  display:flex;align-items:center;justify-content:center;position:relative;}
+.itab:hover{background:rgba(255,255,255,0.05);color:var(--pale);}
+.itab.active{background:rgba(255,59,31,0.14);color:var(--fire);}
+.ibadge{position:absolute;top:3px;right:3px;width:13px;height:13px;border-radius:50%;
+  background:var(--fire);color:#fff;font-family:'Space Mono',monospace;font-size:7px;
+  display:none;align-items:center;justify-content:center;}
+.ibadge.on{display:flex;}
+
+/* ══ PANEL ══ */
+.panel{width:var(--panel-w);flex-shrink:0;background:var(--ash);
+  border-right:1px solid rgba(255,255,255,0.04);overflow-y:auto;display:flex;flex-direction:column;}
+.tpane{display:none;flex-direction:column;flex:1;}
+.tpane.active{display:flex;}
+.sec{padding:16px 18px;border-bottom:1px solid rgba(255,255,255,0.03);}
+.slbl{font-family:'Space Mono',monospace;font-size:8px;letter-spacing:2px;
+  color:var(--fire);text-transform:uppercase;margin-bottom:11px;
+  display:flex;align-items:center;gap:6px;}
+.slbl-note{color:var(--muted);font-size:7px;letter-spacing:1px;
+  background:rgba(255,255,255,0.04);padding:2px 6px;border-radius:3px;}
+
+/* ── inputs ── */
+.row{display:flex;gap:7px;}
+input[type=text],select{
+  flex:1;background:var(--ash2);border:1px solid rgba(255,255,255,0.07);
+  color:var(--pale);padding:8px 11px;border-radius:6px;
+  font-family:'DM Sans',sans-serif;font-size:12px;outline:none;transition:border-color 0.2s;}
+input[type=text]:focus,select:focus{border-color:var(--fire);}
+input[type=text]::placeholder{color:var(--muted);}
+select option{background:var(--ash2);}
+.btn{padding:8px 13px;border-radius:6px;border:none;cursor:pointer;
+  font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;
+  transition:all 0.18s;white-space:nowrap;}
+.btn-fire{background:var(--fire);color:#fff;}
+.btn-fire:hover{background:#ff5538;transform:translateY(-1px);box-shadow:0 4px 16px rgba(255,59,31,0.4);}
+.btn-ghost{background:transparent;border:1px solid rgba(255,255,255,0.1);color:var(--pale);}
+.btn-ghost:hover{border-color:var(--fire);color:var(--fire);}
+.btn-blue{background:rgba(30,144,255,0.08);border:1px solid rgba(30,144,255,0.25);color:var(--blue);}
+.btn-blue:hover{background:rgba(30,144,255,0.16);}
+.btn-green{background:rgba(0,255,135,0.08);border:1px solid rgba(0,255,135,0.25);color:var(--green);}
+.btn-green:hover{background:rgba(0,255,135,0.16);}
+.btn-full{width:100%;justify-content:center;display:flex;align-items:center;gap:7px;}
+
+/* ── sliders ── */
+.sr{margin-bottom:11px;}
+.sr-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;}
+.sr-name{font-size:11px;color:var(--pale);}
+.sr-val{font-family:'Space Mono',monospace;font-size:10px;color:var(--fire);}
+input[type=range]{width:100%;height:3px;-webkit-appearance:none;
+  background:var(--ash3);border-radius:2px;outline:none;cursor:pointer;}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;
+  background:var(--fire);border-radius:50%;border:2px solid rgba(255,255,255,0.25);}
+
+/* ── weather strip ── */
+.wx-strip{display:flex;gap:8px;margin-bottom:10px;}
+.wx-card{flex:1;background:var(--ash2);border:1px solid rgba(255,255,255,0.06);
+  border-radius:7px;padding:8px;text-align:center;}
+.wx-icon{font-size:18px;margin-bottom:3px;}
+.wx-label{font-family:'Space Mono',monospace;font-size:7px;color:var(--muted);letter-spacing:1px;}
+.wx-val{font-size:12px;font-weight:600;color:var(--pale);}
+
+/* ── dispatch card ── */
+.dcard{display:none;background:linear-gradient(135deg,rgba(255,59,31,0.07),rgba(255,140,0,0.03));
+  border:1px solid rgba(255,59,31,0.3);border-radius:10px;padding:15px;margin-top:4px;}
+.dcard.on{display:block;animation:fIn 0.5s ease;}
+@keyframes fIn{0%{opacity:0;transform:scale(0.96);}55%{background:rgba(255,59,31,0.16);}100%{opacity:1;transform:scale(1);}}
+.ds-name{font-family:'Bebas Neue',sans-serif;font-size:19px;letter-spacing:1px;line-height:1.1;margin-bottom:7px;}
+.eta-row{display:flex;align-items:baseline;gap:5px;margin-bottom:9px;}
+.eta-big{font-family:'Bebas Neue',sans-serif;font-size:44px;color:var(--fire);line-height:1;}
+.eta-lbl{font-family:'Space Mono',monospace;font-size:9px;color:var(--muted);line-height:1.5;}
+.cbar{height:3px;background:rgba(255,255,255,0.07);border-radius:2px;overflow:hidden;margin-bottom:10px;}
+.cbar-fill{height:100%;background:linear-gradient(90deg,var(--fire),var(--ember));border-radius:2px;width:100%;}
+.abox{background:var(--fire);color:#fff;padding:9px 11px;border-radius:6px;
+  font-family:'Space Mono',monospace;font-size:8px;letter-spacing:1px;line-height:1.9;}
+
+/* ── incident timeline ── */
+.timeline{display:flex;align-items:center;margin:12px 0 4px;position:relative;}
+.tl-step{display:flex;flex-direction:column;align-items:center;flex:1;position:relative;z-index:1;}
+.tl-dot{width:20px;height:20px;border-radius:50%;background:var(--ash3);
+  border:2px solid rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;
+  font-size:8px;transition:all 0.4s;margin-bottom:4px;}
+.tl-dot.done{background:var(--green);border-color:var(--green);box-shadow:0 0 8px rgba(0,255,135,0.5);}
+.tl-dot.active{background:var(--fire);border-color:var(--fire);
+  box-shadow:0 0 10px rgba(255,59,31,0.7);animation:tpulse 0.8s ease-in-out infinite alternate;}
+@keyframes tpulse{from{transform:scale(1);}to{transform:scale(1.2);}}
+.tl-label{font-family:'Space Mono',monospace;font-size:6px;color:var(--muted);letter-spacing:0.5px;text-align:center;}
+.tl-line{position:absolute;top:10px;left:10%;right:10%;height:2px;
+  background:rgba(255,255,255,0.06);z-index:0;}
+.tl-line-fill{position:absolute;top:10px;left:10%;height:2px;
+  background:linear-gradient(90deg,var(--green),var(--fire));z-index:0;width:0%;transition:width 1s;}
+
+/* ── danger gauge ── */
+.gauge-wrap{display:flex;align-items:center;gap:14px;margin-top:6px;}
+.gauge-svg{flex-shrink:0;}
+.gauge-info{flex:1;}
+.gauge-title{font-family:'Space Mono',monospace;font-size:9px;color:var(--muted);letter-spacing:1px;margin-bottom:4px;}
+.gauge-score{font-family:'Bebas Neue',sans-serif;font-size:32px;line-height:1;}
+.gauge-label{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;margin-top:2px;}
+
+/* ── RL box ── */
+.rlbox{background:var(--ash2);border:1px solid rgba(168,85,247,0.18);
+  border-radius:8px;padding:13px;margin-top:4px;}
+.rltitle{font-family:'Space Mono',monospace;font-size:8px;letter-spacing:2px;color:var(--purple);margin-bottom:9px;}
+.rlrow{display:flex;justify-content:space-between;padding:4px 0;
+  border-bottom:1px solid rgba(255,255,255,0.03);font-size:11px;}
+.rlrow:last-child{border-bottom:none;}
+.rlk{color:var(--muted);}
+.rlv{font-family:'Space Mono',monospace;font-size:10px;color:var(--purple);}
+
+/* ── station list ── */
+.sti{display:flex;justify-content:space-between;align-items:center;
+  padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.03);
+  cursor:pointer;transition:all 0.15s;}
+.sti:last-child{border-bottom:none;}
+.sti:hover{padding-left:4px;}
+.sti:hover .stn{color:var(--fire);}
+.stn{font-size:12px;font-weight:500;}
+.stm{font-family:'Space Mono',monospace;font-size:8px;color:var(--muted);text-align:right;line-height:1.6;}
+.sti.best .stn{color:var(--green);}
+.sti.best .stm{color:var(--green);}
+
+/* ── incident log ── */
+.inci{display:flex;gap:9px;align-items:flex-start;padding:9px 0;
+  border-bottom:1px solid rgba(255,255,255,0.03);cursor:pointer;transition:all 0.15s;}
+.inci:hover{padding-left:4px;}
+.incidot{width:9px;height:9px;border-radius:50%;margin-top:3px;flex-shrink:0;}
+.incibody{flex:1;}
+.incititle{font-size:11px;font-weight:500;margin-bottom:2px;}
+.incisub{font-family:'Space Mono',monospace;font-size:8px;color:var(--muted);}
+.sevbadge{padding:2px 6px;border-radius:3px;font-family:'Space Mono',monospace;font-size:7px;letter-spacing:1px;}
+.sH{background:rgba(255,59,31,0.18);color:var(--fire);}
+.sM{background:rgba(255,214,0,0.18);color:var(--yellow);}
+.sL{background:rgba(0,255,135,0.12);color:var(--green);}
+
+/* ── drone panel ── */
+.dscreen{background:var(--ash2);border:1px dashed rgba(255,255,255,0.09);
+  border-radius:8px;height:130px;display:flex;align-items:center;justify-content:center;
+  position:relative;overflow:hidden;cursor:pointer;transition:all 0.2s;background-size:cover;background-position:center;}
+.dscreen:hover{border-color:var(--fire);}
+.dlbl{font-family:'Space Mono',monospace;font-size:9px;color:var(--muted);letter-spacing:1px;text-align:center;line-height:2;}
+.dhud{position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(0deg,rgba(0,0,0,0.55),transparent 40%,transparent 60%,rgba(0,0,0,0.35));
+  padding:7px;display:none;flex-direction:column;justify-content:space-between;}
+.dhud.on{display:flex;}
+.hudrow{display:flex;justify-content:space-between;align-items:center;}
+.hudtag{font-family:'Space Mono',monospace;font-size:7px;color:rgba(255,255,255,0.65);letter-spacing:1px;}
+.hudfire{color:var(--fire);font-size:9px;animation:blink 0.4s infinite;display:none;}
+.thbtn{width:100%;padding:7px;margin-top:7px;background:rgba(255,140,0,0.08);
+  border:1px solid rgba(255,140,0,0.25);color:var(--ember);border-radius:6px;
+  font-family:'Space Mono',monospace;font-size:8px;letter-spacing:1px;cursor:pointer;transition:all 0.2s;}
+.thbtn:hover{background:rgba(255,140,0,0.18);}
+#camInput{display:none;}
+.firebadge{display:none;position:absolute;top:7px;right:7px;
+  background:var(--fire);color:#fff;padding:2px 7px;border-radius:3px;
+  font-family:'Space Mono',monospace;font-size:7px;letter-spacing:1px;}
+
+/* ── sms popup ── */
+.sms-popup{
+  position:fixed;bottom:24px;left:calc(50px + var(--panel-w) + 20px);
+  z-index:3000;background:var(--ash2);
+  border:1px solid rgba(0,255,135,0.3);border-radius:10px;
+  padding:14px 18px;min-width:320px;max-width:380px;
+  display:none;animation:slideUp2 0.4s ease;
+  box-shadow:0 8px 32px rgba(0,0,0,0.6);
+}
+.sms-popup.on{display:block;}
+@keyframes slideUp2{from{opacity:0;transform:translateY(20px);}to{opacity:1;transform:translateY(0);}}
+.sms-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+.sms-title{font-family:'Space Mono',monospace;font-size:8px;letter-spacing:2px;color:var(--green);}
+.sms-close{background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:0 4px;}
+.sms-msg{font-family:'Space Mono',monospace;font-size:9px;color:var(--pale);
+  background:rgba(0,255,135,0.04);border:1px solid rgba(0,255,135,0.12);
+  border-radius:6px;padding:10px;line-height:1.9;white-space:pre-line;}
+.sms-footer{font-family:'Space Mono',monospace;font-size:7px;color:var(--muted);margin-top:8px;text-align:right;}
+
+/* ── evacuation legend ── */
+.evac-legend{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;}
+.evleg{display:flex;align-items:center;gap:5px;font-family:'Space Mono',monospace;font-size:8px;color:var(--muted);}
+.evdot{width:10px;height:10px;border-radius:50%;}
+
+/* ── MAP ── */
+.mapwrap{flex:1;position:relative;}
+#map{width:100%;height:100%;}
+.maphint{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:900;
+  background:rgba(14,15,17,0.88);border:1px solid rgba(255,59,31,0.28);
+  padding:7px 16px;border-radius:20px;font-family:'Space Mono',monospace;font-size:9px;
+  color:var(--muted);letter-spacing:1px;pointer-events:none;backdrop-filter:blur(6px);transition:opacity 0.4s;}
+
+/* ── DISPATCH OVERLAY ── */
+.dovl{display:none;position:absolute;bottom:20px;right:16px;z-index:900;
+  background:rgba(14,15,17,0.95);border:1px solid rgba(255,59,31,0.32);
+  border-radius:10px;padding:16px 18px;min-width:230px;backdrop-filter:blur(14px);}
+.dovl.on{display:block;animation:sUp 0.4s ease;}
+@keyframes sUp{from{opacity:0;transform:translateY(14px);}to{opacity:1;transform:translateY(0);}}
+.dot-title{font-family:'Space Mono',monospace;font-size:8px;letter-spacing:2px;color:var(--fire);margin-bottom:9px;}
+.ranim{display:flex;align-items:center;gap:7px;margin-bottom:11px;}
+.rnd{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.rln{flex:1;height:2px;
+  background:repeating-linear-gradient(90deg,var(--green) 0,var(--green) 5px,transparent 5px,transparent 10px);
+  animation:march 0.7s linear infinite;}
+@keyframes march{from{background-position:0;}to{background-position:10px;}}
+.doinfo{font-family:'Space Mono',monospace;font-size:8px;color:var(--muted);margin-bottom:11px;line-height:1.8;}
+.navlink{display:block;width:100%;padding:8px;text-align:center;text-decoration:none;
+  border:1px solid rgba(0,255,135,0.28);color:var(--green);border-radius:6px;
+  font-family:'Space Mono',monospace;font-size:8px;letter-spacing:1px;transition:all 0.2s;}
+.navlink:hover{background:rgba(0,255,135,0.07);}
+
+/* ── MAP CONTROLS ── */
+.mctrl{position:absolute;top:14px;right:14px;z-index:900;display:flex;flex-direction:column;gap:7px;}
+.mcbtn{padding:7px 11px;background:rgba(14,15,17,0.88);border:1px solid rgba(255,255,255,0.09);
+  color:var(--pale);border-radius:7px;cursor:pointer;font-family:'Space Mono',monospace;
+  font-size:8px;letter-spacing:1px;backdrop-filter:blur(6px);transition:all 0.2s;white-space:nowrap;}
+.mcbtn:hover,.mcbtn.on{border-color:var(--fire);color:var(--fire);}
+
+/* ── CHART CANVAS ── */
+.chart-wrap{position:relative;height:200px;width:100%;margin-top:8px;}
+
+/* ── TOAST ── */
+#toast{position:fixed;top:66px;right:18px;z-index:9999;
+  background:var(--ash2);border-left:3px solid var(--fire);
+  color:var(--pale);padding:11px 15px;border-radius:6px;
+  font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;
+  max-width:280px;line-height:1.7;opacity:0;transform:translateX(14px);transition:all 0.3s;}
+#toast.show{opacity:1;transform:translateX(0);}
+
+/* ── FIRE CURSOR ── */
+#cur{position:fixed;pointer-events:none;z-index:9998;
+  font-size:20px;transform:translate(-50%,-50%);display:none;}
+
+/* ── LEAFLET ── */
+.leaflet-container{background:#090a0c;}
+.leaflet-tile{filter:brightness(0.45) saturate(0.25) hue-rotate(15deg);}
+.leaflet-popup-content-wrapper{background:var(--ash2);color:var(--pale);
+  border-radius:8px;border:1px solid rgba(255,59,31,0.28);box-shadow:0 8px 30px rgba(0,0,0,0.7);}
+.leaflet-popup-tip{background:var(--ash2);}
+.leaflet-popup-content{font-family:'Space Mono',monospace;font-size:9px;
+  letter-spacing:0.5px;margin:9px 13px;line-height:1.8;}
+.leaflet-control-zoom a{background:var(--ash2)!important;color:var(--pale)!important;
+  border-color:rgba(255,255,255,0.08)!important;}
+</style>
+</head>
+<body>
+<div id="cur">🔥</div>
+
+<!-- ══ HEADER ══ -->
+<header>
+  <div class="logo">
+    <div class="logo-mark">🔥</div>
+    <div>
+      <div class="logo-name">PYRO<em>SENSE</em></div>
+      <div class="logo-sub">AI-DRIVEN FIRE EMERGENCY RESPONSE · TAMIL NADU</div>
+    </div>
+  </div>
+  <div class="hdr-right">
+    <div class="pill"><div class="dot" id="sysDot"></div><span id="sysTxt">SYSTEM ONLINE</span></div>
+    <div class="pill" id="wthPill"><div class="dot blu"></div><span id="wthTxt">WEATHER —</span></div>
+    <div class="pill"><div class="dot"></div><span id="clk">--:--:--</span></div>
+    <div class="pill" id="incPill"><div class="dot red"></div><span id="incTxt">INCIDENT ACTIVE</span></div>
+    <div class="pill" id="multiPill"><div class="dot yel"></div><span id="multiTxt">MULTI-INCIDENT</span></div>
+  </div>
+</header>
+
+<!-- ══ LAYOUT ══ -->
+<div class="layout">
+
+<!-- ICON NAV -->
+<div class="iconav">
+  <button class="itab active" id="ib0" onclick="switchTab(0)" title="Dispatch">🚒</button>
+  <button class="itab" id="ib1" onclick="switchTab(1)" title="Incidents">
+    📋<span class="ibadge" id="ibadge">0</span>
+  </button>
+  <button class="itab" id="ib2" onclick="switchTab(2)" title="Drone">🚁</button>
+  <button class="itab" id="ib3" onclick="switchTab(3)" title="AI Model">🧠</button>
+  <button class="itab" id="ib4" onclick="switchTab(4)" title="Analytics">📊</button>
+  <button class="itab" id="ib5" onclick="switchTab(5)" title="Stations">🗺</button>
+</div>
+
+<!-- ══ PANEL ══ -->
+<div class="panel">
+
+  <!-- ─ TAB 0: DISPATCH ─ -->
+  <div class="tpane active" id="tp0">
+
+    <div class="sec">
+      <div class="slbl">🔍 Emergency Call Processing</div>
+      <div class="row" style="margin-bottom:7px;">
+        <input type="text" id="searchInput" placeholder="Search location / address…">
+        <button class="btn btn-fire" onclick="searchLocation()">GO</button>
+      </div>
+      <button class="btn btn-blue btn-full" onclick="useGPS()">⊕ USE GPS LOCATION</button>
+    </div>
+
+    <div class="sec">
+      <div class="slbl">⚙️ Incident Parameters <span class="slbl-note">AUTO-FEED IN PRODUCTION</span></div>
+      <div class="row" style="margin-bottom:9px;">
+        <select id="sevSel" onchange="updateParams()">
+          <option value="HIGH">🔴 HIGH SEVERITY</option>
+          <option value="MED" selected>🟡 MEDIUM SEVERITY</option>
+          <option value="LOW">🟢 LOW SEVERITY</option>
+        </select>
+        <select id="typeSel" onchange="updateParams()">
+          <option value="structure">🏢 Structure</option>
+          <option value="vehicle">🚗 Vehicle</option>
+          <option value="forest">🌲 Forest</option>
+          <option value="industrial">🏭 Industrial</option>
+        </select>
+      </div>
+      <!-- LIVE WEATHER STRIP -->
+      <div class="wx-strip" id="wxStrip">
+        <div class="wx-card"><div class="wx-icon" id="wxIcon">🌤</div><div class="wx-label">WEATHER</div><div class="wx-val" id="wxMain">—</div></div>
+        <div class="wx-card"><div class="wx-icon">🌡</div><div class="wx-label">TEMP</div><div class="wx-val" id="wxTemp">—</div></div>
+        <div class="wx-card"><div class="wx-icon">💨</div><div class="wx-label">WIND</div><div class="wx-val" id="wxWind">—</div></div>
+        <div class="wx-card"><div class="wx-icon">💧</div><div class="wx-label">HUMID</div><div class="wx-val" id="wxHum">—</div></div>
+      </div>
+      <div class="sr">
+        <div class="sr-top"><span class="sr-name">Traffic Conditions (t)</span><span class="sr-val" id="trafV">MODERATE</span></div>
+        <input type="range" id="trafS" min="0" max="4" value="2" oninput="updateParams()">
+      </div>
+      <div class="sr">
+        <div class="sr-top"><span class="sr-name">Weather Severity (w)</span><span class="sr-val" id="wxV">CLEAR</span></div>
+        <input type="range" id="wxS" min="0" max="3" value="0" oninput="updateParams()">
+      </div>
+      <div class="sr" style="margin-bottom:0;">
+        <div class="sr-top"><span class="sr-name">Time of Day (τ)</span><span class="sr-val" id="todV">AFTERNOON</span></div>
+        <input type="range" id="todS" min="0" max="3" value="2" oninput="updateParams()">
+      </div>
+    </div>
+
+    <div class="sec">
+      <div class="slbl">🚒 Dispatch Status</div>
+      <div class="dcard" id="dcard">
+        <div class="ds-name" id="dsName">—</div>
+        <div class="eta-row">
+          <div class="eta-big" id="etaBig">—</div>
+          <div class="eta-lbl">MIN ETA<br><span style="color:var(--muted);font-size:7px;">ML PREDICTED</span></div>
+        </div>
+        <div class="cbar"><div class="cbar-fill" id="cbarFill"></div></div>
+        <!-- INCIDENT TIMELINE -->
+        <div style="margin-bottom:6px;position:relative;">
+          <div class="tl-line" id="tlLine"></div>
+          <div class="tl-line-fill" id="tlFill"></div>
+          <div class="timeline">
+            <div class="tl-step"><div class="tl-dot" id="tls0">📞</div><div class="tl-label">REPORTED</div></div>
+            <div class="tl-step"><div class="tl-dot" id="tls1">📡</div><div class="tl-label">DISPATCH</div></div>
+            <div class="tl-step"><div class="tl-dot" id="tls2">🚒</div><div class="tl-label">EN ROUTE</div></div>
+            <div class="tl-step"><div class="tl-dot" id="tls3">🔥</div><div class="tl-label">ON SCENE</div></div>
+            <div class="tl-step"><div class="tl-dot" id="tls4">✅</div><div class="tl-label">CONTAINED</div></div>
+          </div>
+        </div>
+        <div class="abox" id="abox">FIRE EMERGENCY ALERT<br>DISPATCHING UNIT NOW<br><span id="acoords">—</span></div>
+      </div>
+      <div id="noInc" style="font-family:'Space Mono',monospace;font-size:9px;color:var(--muted);letter-spacing:1px;">
+        CLICK MAP OR SEARCH TO REPORT FIRE
+      </div>
+    </div>
+
+    <!-- DANGER GAUGE -->
+    <div class="sec">
+      <div class="slbl">🛡 Firefighter Safety Score</div>
+      <div class="gauge-wrap">
+        <svg class="gauge-svg" width="80" height="80" viewBox="0 0 80 80">
+          <circle cx="40" cy="40" r="32" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="8"/>
+          <circle id="gCircle" cx="40" cy="40" r="32" fill="none" stroke="#00FF87" stroke-width="8"
+            stroke-linecap="round" stroke-dasharray="201" stroke-dashoffset="201"
+            transform="rotate(-90 40 40)" style="transition:stroke-dashoffset 1s,stroke 0.5s;"/>
+          <text x="40" y="45" text-anchor="middle" font-family="Bebas Neue" font-size="22" fill="#e8e4db" id="gTxt">—</text>
+        </svg>
+        <div class="gauge-info">
+          <div class="gauge-title">DANGER INDEX</div>
+          <div class="gauge-score" id="gScore" style="color:var(--green);">SAFE</div>
+          <div class="gauge-label" id="gLabel" style="color:var(--muted);">NO ACTIVE INCIDENT</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RL PANEL -->
+    <div class="sec">
+      <div class="slbl">🧬 RL Dispatch Optimizer</div>
+      <div class="rlbox">
+        <div class="rltitle">Q(s,a) = r + γ · max Q(s',a')</div>
+        <div class="rlrow"><span class="rlk">State (s)</span><span class="rlv" id="rlS">IDLE</span></div>
+        <div class="rlrow"><span class="rlk">Action (a)</span><span class="rlv" id="rlA">—</span></div>
+        <div class="rlrow"><span class="rlk">Reward (r)</span><span class="rlv" id="rlR">—</span></div>
+        <div class="rlrow"><span class="rlk">Q-Value</span><span class="rlv" id="rlQ">—</span></div>
+        <div class="rlrow"><span class="rlk">γ discount</span><span class="rlv">0.95</span></div>
+        <div class="rlrow"><span class="rlk">Policy</span><span class="rlv">ε-GREEDY</span></div>
+        <div class="rlrow"><span class="rlk">Episodes</span><span class="rlv" id="rlEp">0</span></div>
+      </div>
+    </div>
+
+    <!-- EVACUATION ZONES -->
+    <div class="sec">
+      <div class="slbl">🚨 Evacuation Zones</div>
+      <div id="evacInfo" style="font-family:'Space Mono',monospace;font-size:9px;color:var(--muted);letter-spacing:1px;">
+        REPORT FIRE TO GENERATE ZONES
+      </div>
+      <div class="evac-legend">
+        <div class="evleg"><div class="evdot" style="background:rgba(255,59,31,0.7);"></div>0–500m IMMEDIATE</div>
+        <div class="evleg"><div class="evdot" style="background:rgba(255,140,0,0.6);"></div>500m–1km URGENT</div>
+        <div class="evleg"><div class="evdot" style="background:rgba(255,214,0,0.5);"></div>1–2km PRECAUTIONARY</div>
+      </div>
+    </div>
+
+  </div><!-- end tp0 -->
+
+  <!-- ─ TAB 1: INCIDENTS ─ -->
+  <div class="tpane" id="tp1">
+    <div class="sec">
+      <div class="slbl">📋 Active Incidents</div>
+      <div id="incLog"><div style="font-family:'Space Mono',monospace;font-size:9px;color:var(--muted);letter-spacing:1px;padding:6px 0;">NO ACTIVE INCIDENTS</div></div>
+    </div>
+    <div class="sec">
+      <button class="btn btn-fire btn-full" onclick="addSimInc()">+ SIMULATE NEW INCIDENT</button>
+    </div>
+    <div class="sec">
+      <div class="slbl">📊 Response Stats</div>
+      <div class="rlbox">
+        <div class="rlrow"><span class="rlk">Total Incidents</span><span class="rlv" id="sTotal">0</span></div>
+        <div class="rlrow"><span class="rlk">Avg ETA</span><span class="rlv" id="sAvg">— min</span></div>
+        <div class="rlrow"><span class="rlk">Fastest Response</span><span class="rlv" id="sFast">— min</span></div>
+        <div class="rlrow"><span class="rlk">Active Units</span><span class="rlv" id="sUnits">0</span></div>
+      </div>
+    </div>
+    <!-- PRE-POSITIONING -->
+    <div class="sec">
+      <div class="slbl">🎯 Predictive Pre-Positioning</div>
+      <div id="prepos" style="font-family:'Space Mono',monospace;font-size:9px;color:var(--muted);letter-spacing:1px;line-height:1.8;">
+        ANALYSING RISK ZONES…
+      </div>
+    </div>
+  </div>
+
+  <!-- ─ TAB 2: DRONE ─ -->
+  <div class="tpane" id="tp2">
+    <div class="sec">
+      <div class="slbl">🚁 Drone-Based Situational Awareness</div>
+      <div class="dscreen" id="dscreen" onclick="document.getElementById('camInput').click()">
+        <div class="dlbl" id="dlbl">📷 UPLOAD DRONE / CAMERA IMAGE<br><span style="font-size:8px;color:#444;">CLICK TO SELECT FILE</span></div>
+        <div class="dhud" id="dhud">
+          <div class="hudrow"><span class="hudtag">◉ REC</span><span class="hudtag" id="hudT">00:00</span></div>
+          <div class="hudrow"><span class="hudtag">ALT 120m</span><span class="hudfire" id="hudF">🔥 FIRE DETECTED</span><span class="hudtag">THERMAL</span></div>
+        </div>
+        <div class="firebadge" id="fbadge">🔥 FIRE CONFIRMED</div>
+      </div>
+      <input type="file" id="camInput" accept="image/*" capture="environment" onchange="analyzeImg(event)">
+      <button class="thbtn" id="thBtn" onclick="toggleThermal()">🌡 TOGGLE THERMAL OVERLAY</button>
+    </div>
+    <div class="sec">
+      <div class="slbl">📡 Drone Telemetry</div>
+      <div class="rlbox">
+        <div class="rlrow"><span class="rlk">Status</span><span class="rlv" id="dStatus">STANDBY</span></div>
+        <div class="rlrow"><span class="rlk">Altitude</span><span class="rlv">120 m</span></div>
+        <div class="rlrow"><span class="rlk">Battery</span><span class="rlv" id="dBat">87%</span></div>
+        <div class="rlrow"><span class="rlk">Fire Pixels</span><span class="rlv" id="dPx">—</span></div>
+        <div class="rlrow"><span class="rlk">Severity Est.</span><span class="rlv" id="dSev">—</span></div>
+        <div class="rlrow"><span class="rlk">Coverage</span><span class="rlv" id="dCov">—</span></div>
+      </div>
+    </div>
+    <div class="sec">
+      <button class="btn btn-fire btn-full" onclick="deployDrone()">🚁 DEPLOY DRONE TO INCIDENT</button>
+    </div>
+  </div>
+
+  <!-- ─ TAB 3: AI MODEL ─ -->
+  <div class="tpane" id="tp3">
+    <div class="sec">
+      <div class="slbl">🧠 ML Prediction Model</div>
+      <div style="font-family:'Space Mono',monospace;font-size:8px;color:var(--muted);letter-spacing:1px;margin-bottom:11px;line-height:1.9;">
+        T = f(d, t, w, τ)<br>
+        RANDOM FOREST + XGBOOST ENSEMBLE
+      </div>
+      <div class="rlbox" style="border-color:rgba(30,144,255,0.2);">
+        <div class="rltitle" style="color:var(--blue);">CURRENT PREDICTION INPUTS</div>
+        <div class="rlrow"><span class="rlk">Distance (d)</span><span class="rlv" style="color:var(--blue);" id="mD">— km</span></div>
+        <div class="rlrow"><span class="rlk">Traffic (t)</span><span class="rlv" style="color:var(--blue);" id="mT">—</span></div>
+        <div class="rlrow"><span class="rlk">Weather (w)</span><span class="rlv" style="color:var(--blue);" id="mW">—</span></div>
+        <div class="rlrow"><span class="rlk">Time of Day (τ)</span><span class="rlv" style="color:var(--blue);" id="mTOD">—</span></div>
+        <div class="rlrow"><span class="rlk">Severity</span><span class="rlv" style="color:var(--blue);" id="mSev">—</span></div>
+        <div class="rlrow" style="margin-top:5px;padding-top:7px;border-top:1px solid rgba(30,144,255,0.15);">
+          <span class="rlk" style="color:var(--blue);">Predicted T</span>
+          <span style="font-family:'Bebas Neue',sans-serif;font-size:20px;color:var(--blue);" id="mPred">—</span>
+        </div>
+      </div>
+    </div>
+    <div class="sec">
+      <div class="slbl">📈 Model Confidence</div>
+      <div style="margin-bottom:7px;">
+        <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px;">
+          <span>Random Forest</span><span style="font-family:'Space Mono',monospace;color:var(--green);" id="rfC">—</span>
+        </div>
+        <div class="cbar"><div class="cbar-fill" id="rfBar" style="background:var(--green);width:0%;transition:width 1s;"></div></div>
+      </div>
+      <div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px;">
+          <span>XGBoost</span><span style="font-family:'Space Mono',monospace;color:var(--blue);" id="xgC">—</span>
+        </div>
+        <div class="cbar"><div class="cbar-fill" id="xgBar" style="background:var(--blue);width:0%;transition:width 1s;"></div></div>
+      </div>
+    </div>
+    <div class="sec">
+      <div class="slbl">🔁 RL Policy Updates</div>
+      <div class="rlbox">
+        <div class="rltitle">Q(s,a) = r + γ · max Q(s',a')</div>
+        <div class="rlrow"><span class="rlk">Episodes Run</span><span class="rlv" id="rlEps2">0</span></div>
+        <div class="rlrow"><span class="rlk">Avg Reward</span><span class="rlv" id="rlAvg">—</span></div>
+        <div class="rlrow"><span class="rlk">Best Action</span><span class="rlv" id="rlBest">—</span></div>
+        <div class="rlrow"><span class="rlk">Exploration ε</span><span class="rlv">0.10</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─ TAB 4: ANALYTICS ─ -->
+  <div class="tpane" id="tp4">
+    <div class="sec">
+      <div class="slbl">📊 ETA vs Distance — All Stations</div>
+      <div class="chart-wrap"><canvas id="etaChart"></canvas></div>
+    </div>
+    <div class="sec">
+      <div class="slbl">📉 Response Time History</div>
+      <div class="chart-wrap"><canvas id="histChart"></canvas></div>
+    </div>
+    <div class="sec">
+      <div class="slbl">🏙 Smart City Integration</div>
+      <div class="rlbox" style="border-color:rgba(0,212,255,0.2);">
+        <div class="rltitle" style="color:var(--cyan);">ACTIVE NODES</div>
+        <div class="rlrow"><span class="rlk">Total Stations</span><span class="rlv" style="color:var(--cyan);">50 ACROSS TAMIL NADU</span></div>
+        <div class="rlrow"><span class="rlk">Chennai</span><span class="rlv" style="color:var(--cyan);">8 STATIONS · TRAFFIC API ✓</span></div>
+        <div class="rlrow"><span class="rlk">Coimbatore</span><span class="rlv" style="color:var(--cyan);">4 STATIONS · DRONE READY ✓</span></div>
+        <div class="rlrow"><span class="rlk">Madurai</span><span class="rlv" style="color:var(--cyan);">3 STATIONS · HEATMAP ✓</span></div>
+        <div class="rlrow"><span class="rlk">Sivakasi (High Risk)</span><span class="rlv" style="color:var(--fire);">PRIORITY ZONE ⚠</span></div>
+        <div class="rlrow"><span class="rlk">Other Districts</span><span class="rlv" style="color:var(--cyan);">35 STATIONS ACTIVE</span></div>
+        <div class="rlrow"><span class="rlk">IoT Sensors</span><span class="rlv" style="color:var(--yellow);">SIMULATED</span></div>
+        <div class="rlrow"><span class="rlk">GIS Layer</span><span class="rlv" style="color:var(--cyan);">ACTIVE ✓</span></div>
+        <div class="rlrow"><span class="rlk">Alert System</span><span class="rlv" style="color:var(--yellow);">DEMO (Twilio ready)</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─ TAB 5: STATIONS ─ -->
+  <div class="tpane" id="tp5">
+    <div class="sec">
+      <div class="slbl">🗺 All Fire Stations</div>
+      <div id="allSt"></div>
+    </div>
+  </div>
+
+</div><!-- end panel -->
+
+<!-- ══ MAP ══ -->
+<div class="mapwrap">
+  <div class="maphint" id="maphint">CLICK MAP TO REPORT FIRE — OR USE SEARCH / GPS</div>
+  <div id="map"></div>
+  <div class="mctrl">
+    <button class="mcbtn" id="heatBtn" onclick="toggleHeatmap()">🌡 RISK HEATMAP</button>
+    <button class="mcbtn" id="evacBtn" onclick="toggleEvacuation()">🚨 EVAC ZONES</button>
+    <button class="mcbtn" id="spreadBtn" onclick="toggleSpread()">🔥 FIRE SPREAD</button>
+    <button class="mcbtn" id="stBtn" onclick="toggleStations()">🚒 STATIONS</button>
+  </div>
+  <div class="dovl" id="dovl">
+    <div class="dot-title">🚒 UNIT DISPATCHED — EN ROUTE</div>
+    <div class="ranim">
+      <div class="rnd" style="background:var(--blue)"></div>
+      <div class="rln"></div>
+      <div class="rnd" style="background:var(--fire)"></div>
+    </div>
+    <div class="doinfo" id="doinfo">—</div>
+    <a id="navlnk" href="#" target="_blank" class="navlink">🧭 OPEN IN GOOGLE MAPS</a>
+  </div>
+</div>
+
+</div><!-- end layout -->
+
+<!-- ══ SMS POPUP ══ -->
+<div class="sms-popup" id="smsPopup">
+  <div class="sms-header">
+    <div class="sms-title">📱 DISPATCH ALERT (DEMO)</div>
+    <button class="sms-close" onclick="document.getElementById('smsPopup').classList.remove('on')">✕</button>
+  </div>
+  <div class="sms-msg" id="smsMsg">—</div>
+  <div class="sms-footer" id="smsFooter">—</div>
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════════════════════
+// DATA
+// ══════════════════════════════════════════════════════════
+const STATIONS = {
+  // ── CHENNAI DISTRICT (8 stations) ──
+  "Egmore":           {coords:[13.0732,80.2609],city:"Chennai",     units:4,commander:"DSP Rajan K.",phone:"+91-44-28190101"},
+  "T Nagar":          {coords:[13.0418,80.2341],city:"Chennai",     units:3,commander:"Insp. Priya S.",phone:"+91-44-24342101"},
+  "Guindy":           {coords:[13.0105,80.2206],city:"Chennai",     units:4,commander:"DSP Muthu R.",phone:"+91-44-22500101"},
+  "Anna Nagar":       {coords:[13.0850,80.2101],city:"Chennai",     units:3,commander:"Insp. Karthik V.",phone:"+91-44-26153101"},
+  "Ambattur":         {coords:[13.0982,80.1610],city:"Chennai",     units:3,commander:"Insp. Divya M.",phone:"+91-44-26582101"},
+  "Manali":           {coords:[13.1650,80.2566],city:"Chennai",     units:2,commander:"Insp. Senthil R.",phone:"+91-44-25941101"},
+  "Sholinganallur":   {coords:[12.9010,80.2279],city:"Chennai",     units:2,commander:"Insp. Kavitha N.",phone:"+91-44-24502101"},
+  "Tondiarpet":       {coords:[13.1108,80.2942],city:"Chennai",     units:2,commander:"Insp. Babu T.",phone:"+91-44-25959101"},
+
+  // ── COIMBATORE DISTRICT (4 stations) ──
+  "Coimbatore Central":{coords:[11.0168,76.9558],city:"Coimbatore", units:4,commander:"DSP Selvam A.",phone:"+91-422-2301101"},
+  "Coimbatore North":  {coords:[11.0510,76.9720],city:"Coimbatore", units:2,commander:"Insp. Vimal P.",phone:"+91-422-2445101"},
+  "Coimbatore South":  {coords:[10.9900,76.9400],city:"Coimbatore", units:2,commander:"Insp. Aruna K.",phone:"+91-422-2558101"},
+  "Tiruppur":          {coords:[11.1085,77.3411],city:"Tiruppur",   units:3,commander:"Insp. Ramu S.",phone:"+91-421-2200101"},
+
+  // ── MADURAI DISTRICT (3 stations) ──
+  "Madurai Central":   {coords:[9.9252, 78.1198],city:"Madurai",    units:4,commander:"DSP Anbu P.",phone:"+91-452-2345101"},
+  "Madurai North":     {coords:[9.9601, 78.1172],city:"Madurai",    units:2,commander:"Insp. Selvi R.",phone:"+91-452-2532101"},
+  "Madurai South":     {coords:[9.8943, 78.1198],city:"Madurai",    units:2,commander:"Insp. Mano K.",phone:"+91-452-2671101"},
+
+  // ── TRICHY DISTRICT (3 stations) ──
+  "Trichy Central":    {coords:[10.7905,78.7047],city:"Trichy",     units:3,commander:"DSP Suresh L.",phone:"+91-431-2415101"},
+  "Srirangam":         {coords:[10.8631,78.6877],city:"Trichy",     units:2,commander:"Insp. Gomathi S.",phone:"+91-431-2432101"},
+  "Trichy West":       {coords:[10.7740,78.6700],city:"Trichy",     units:2,commander:"Insp. Prem V.",phone:"+91-431-2551101"},
+
+  // ── SALEM DISTRICT (3 stations) ──
+  "Salem Central":     {coords:[11.6643,78.1460],city:"Salem",      units:3,commander:"DSP Nirmala T.",phone:"+91-427-2332101"},
+  "Salem North":       {coords:[11.7010,78.1500],city:"Salem",      units:2,commander:"Insp. Gopal M.",phone:"+91-427-2461101"},
+  "Mettur":            {coords:[11.7973,77.8003],city:"Salem",      units:1,commander:"Insp. Devi R.",phone:"+91-4298-222101"},
+
+  // ── TIRUNELVELI DISTRICT (3 stations) ──
+  "Tirunelveli":       {coords:[8.7139, 77.7567],city:"Tirunelveli",units:3,commander:"DSP Balan S.",phone:"+91-462-2333101"},
+  "Tuticorin":         {coords:[8.7642, 78.1348],city:"Tuticorin",  units:3,commander:"Insp. Rani P.",phone:"+91-461-2325101"},
+  "Nagercoil":         {coords:[8.1833, 77.4119],city:"Nagercoil",  units:2,commander:"Insp. Jeyaraj T.",phone:"+91-4652-227101"},
+
+  // ── ERODE DISTRICT (2 stations) ──
+  "Erode":             {coords:[11.3410,77.7172],city:"Erode",      units:2,commander:"Insp. Mala K.",phone:"+91-424-2258101"},
+  "Bhavani":           {coords:[11.4462,77.6839],city:"Erode",      units:1,commander:"Insp. Kumar S.",phone:"+91-4256-232101"},
+
+  // ── VELLORE DISTRICT (2 stations) ──
+  "Vellore":           {coords:[12.9165,79.1325],city:"Vellore",    units:2,commander:"Insp. Raj C.",phone:"+91-416-2231101"},
+  "Katpadi":           {coords:[12.9675,79.1443],city:"Vellore",    units:2,commander:"Insp. Subbiah N.",phone:"+91-416-2246101"},
+
+  // ── THANJAVUR DISTRICT (2 stations) ──
+  "Thanjavur":         {coords:[10.7867,79.1378],city:"Thanjavur",  units:2,commander:"Insp. Gopi N.",phone:"+91-4362-230101"},
+  "Kumbakonam":        {coords:[10.9602,79.3845],city:"Thanjavur",  units:2,commander:"Insp. Praba S.",phone:"+91-435-2430101"},
+
+  // ── KANCHIPURAM DISTRICT (2 stations) ──
+  "Kanchipuram":       {coords:[12.8342,79.7036],city:"Kanchipuram",units:2,commander:"Insp. Meena J.",phone:"+91-44-27222101"},
+  "Chengalpattu":      {coords:[12.6921,79.9768],city:"Kanchipuram",units:2,commander:"Insp. Siva R.",phone:"+91-44-27426101"},
+
+  // ── CUDDALORE DISTRICT (2 stations) ──
+  "Cuddalore":         {coords:[11.7447,79.7680],city:"Cuddalore",  units:2,commander:"Insp. Ravi D.",phone:"+91-4142-230101"},
+  "Chidambaram":       {coords:[11.3993,79.6931],city:"Cuddalore",  units:1,commander:"Insp. Muthu P.",phone:"+91-4144-221101"},
+
+  // ── OTHER MAJOR DISTRICTS ──
+  "Dindigul":          {coords:[10.3673,77.9803],city:"Dindigul",   units:2,commander:"Insp. Vijay K.",phone:"+91-451-2422101"},
+  "Pudukkottai":       {coords:[10.3833,78.8001],city:"Pudukkottai",units:1,commander:"Insp. Durai S.",phone:"+91-4322-221101"},
+  "Ramanathapuram":    {coords:[9.3714, 78.8307],city:"Ramanathapuram",units:2,commander:"Insp. Arasi M.",phone:"+91-4567-221101"},
+  "Virudhunagar":      {coords:[9.5770, 77.9624],city:"Virudhunagar",units:2,commander:"Insp. Bose T.",phone:"+91-4562-243101"},
+  "Sivakasi":          {coords:[9.4539, 77.7967],city:"Virudhunagar",units:3,commander:"DSP Krishnan A.",phone:"+91-4562-221101"},
+  "Karur":             {coords:[10.9601,78.0766],city:"Karur",      units:2,commander:"Insp. Leela N.",phone:"+91-4324-232101"},
+  "Namakkal":          {coords:[11.2190,78.1675],city:"Namakkal",   units:2,commander:"Insp. Velu R.",phone:"+91-4286-221101"},
+  "Dharmapuri":        {coords:[12.1211,78.1582],city:"Dharmapuri", units:2,commander:"Insp. Chandra K.",phone:"+91-4342-231101"},
+  "Krishnagiri":       {coords:[12.5186,78.2137],city:"Krishnagiri",units:2,commander:"Insp. Raj M.",phone:"+91-4343-236101"},
+  "Villupuram":        {coords:[11.9401,79.4861],city:"Villupuram",  units:2,commander:"Insp. Geetha S.",phone:"+91-4146-221101"},
+  "Tiruvannamalai":    {coords:[12.2253,79.0747],city:"Tiruvannamalai",units:2,commander:"Insp. Pandian K.",phone:"+91-4175-221101"},
+  "Nagapattinam":      {coords:[10.7672,79.8449],city:"Nagapattinam",units:2,commander:"Insp. Kannan P.",phone:"+91-4365-224101"},
+  "Mayiladuthurai":    {coords:[11.1027,79.6519],city:"Nagapattinam",units:1,commander:"Insp. Saradha R.",phone:"+91-4364-225101"},
+  "Sivaganga":         {coords:[9.8476, 78.4801],city:"Sivaganga",  units:1,commander:"Insp. Malar T.",phone:"+91-4575-241101"},
+  "Theni":             {coords:[10.0104,77.4765],city:"Theni",      units:2,commander:"Insp. Balu S.",phone:"+91-4546-231101"},
+  "Tenkasi":           {coords:[8.9597, 77.3153],city:"Tenkasi",    units:1,commander:"Insp. Rani K.",phone:"+91-4633-221101"},
+  "Hosur":             {coords:[12.7409,77.8253],city:"Krishnagiri", units:2,commander:"Insp. Ashok V.",phone:"+91-4344-243101"},
+};
+
+const HEAT_DATA = [
+  // Chennai dense zones
+  [13.0827,80.2707,0.95],[13.0418,80.2341,0.80],[13.0105,80.2206,0.70],
+  [13.0850,80.2101,0.65],[13.0982,80.1610,0.55],[13.1650,80.2566,0.75],
+  [12.9010,80.2279,0.50],[13.1108,80.2942,0.60],[13.0500,80.2000,0.65],
+  [13.1200,80.1800,0.45],[12.9698,80.2209,0.80],[13.0200,80.2700,0.70],
+  // Coimbatore
+  [11.0168,76.9558,0.85],[11.0510,76.9720,0.60],[10.9900,76.9400,0.55],
+  [11.1085,77.3411,0.70],
+  // Madurai
+  [9.9252,78.1198,0.80],[9.9601,78.1172,0.50],[9.8943,78.1198,0.45],
+  // Trichy
+  [10.7905,78.7047,0.65],[10.8631,78.6877,0.50],
+  // Salem
+  [11.6643,78.1460,0.60],[11.7010,78.1500,0.45],
+  // Tirunelveli / Tuticorin
+  [8.7139,77.7567,0.65],[8.7642,78.1348,0.60],[8.1833,77.4119,0.45],
+  // Sivakasi — high risk (firecracker industry)
+  [9.4539,77.7967,0.95],[9.5000,77.8200,0.80],[9.4200,77.7700,0.70],
+  // Erode
+  [11.3410,77.7172,0.55],[11.4462,77.6839,0.40],
+  // Vellore
+  [12.9165,79.1325,0.50],[12.9675,79.1443,0.45],
+  // Other cities
+  [10.9602,79.3845,0.50],[10.7867,79.1378,0.50],[12.8342,79.7036,0.40],
+  [11.7447,79.7680,0.40],[10.3673,77.9803,0.45],[9.3714,78.8307,0.55],
+  [11.2190,78.1675,0.40],[12.1211,78.1582,0.45],[12.5186,78.2137,0.50],
+  [11.9401,79.4861,0.45],[12.2253,79.0747,0.40],[10.7672,79.8449,0.50],
+  [12.7409,77.8253,0.55],[10.0104,77.4765,0.40],[11.1027,79.6519,0.35],
+];
+
+const TRAF_LBL = ["FREE FLOW","LIGHT","MODERATE","HEAVY","GRIDLOCK"];
+const WX_LBL   = ["CLEAR","RAIN","FOG","STORM"];
+const TOD_LBL  = ["NIGHT","MORNING","AFTERNOON","EVENING"];
+const SEV_MULT = {HIGH:1.3,MED:1.0,LOW:0.75};
+const FIRE_TYPE_DANGER = {structure:60,vehicle:40,forest:70,industrial:90};
+const WX_DANGER = [0,20,15,35];
+const WX_ICONS  = ["🌤","🌧","🌫","⛈"];
+
+// ══════════════════════════════════════════════════════════
+// ML: T = f(d, t, w, τ) — RF + XGBoost ensemble
+// ══════════════════════════════════════════════════════════
+function rfPredict(d,t,w,tau){
+  const tf=[1.0,1.1,1.25,1.5,1.9][t];
+  const wf=[1.0,1.15,1.2,1.4][w];
+  const tf2=[0.85,1.0,1.1,1.2][tau];
+  return d*2.2*tf*wf*tf2+2.5;
+}
+function xgbPredict(d,t,w,tau){
+  const tf=[1.0,1.08,1.22,1.55,2.0][t];
+  const wf=[1.0,1.12,1.18,1.45][w];
+  const tf2=[0.88,1.0,1.08,1.18][tau];
+  return d*2.35*tf*wf*tf2+3.0;
+}
+function predictETA(d,t,w,tau,sev){
+  const rf=rfPredict(d,t,w,tau), xg=xgbPredict(d,t,w,tau);
+  const ens=(rf*0.5+xg*0.5)*SEV_MULT[sev];
+  return Math.max(1.5, ens+(Math.random()-0.5)*1.5);
+}
+
+// ══════════════════════════════════════════════════════════
+// RL: Q(s,a) = r + γ·max Q(s',a')
+// ══════════════════════════════════════════════════════════
+const RL={
+  gamma:0.95, episodes:0, rewards:[], qTable:{},
+  getState:(sev,t,w)=>`${sev}_T${t}_W${w}`,
+  reward:(eta,units)=>Math.max(0,20-eta)+(units>1?2:0),
+  run(ranked,sev,t,w){
+    const state=this.getState(sev,t,w);
+    const best=ranked[0];
+    const r=this.reward(best.eta,STATIONS[best.name].units);
+    const key=`${state}::${best.name}`;
+    this.qTable[key]=r+this.gamma*(r*this.gamma);
+    this.episodes++; this.rewards.push(r);
+    return {state,action:best.name,reward:r.toFixed(2),qVal:this.qTable[key].toFixed(2)};
+  }
+};
+
+// ══════════════════════════════════════════════════════════
+// MAP SETUP
+// ══════════════════════════════════════════════════════════
+const map=L.map('map',{zoomControl:false}).setView([11.1271,78.6569],7);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+  attribution:'© OpenStreetMap',maxZoom:18}).addTo(map);
+L.control.zoom({position:'bottomright'}).addTo(map);
+
+const stIcon=L.divIcon({
+  html:`<div style="width:24px;height:24px;background:#1e90ff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;border:2px solid rgba(255,255,255,0.2);box-shadow:0 2px 8px rgba(0,0,0,0.6)">🚒</div>`,
+  className:'',iconSize:[24,24],iconAnchor:[12,12]});
+
+const stMarkers={};
+for(const [n,d] of Object.entries(STATIONS)){
+  stMarkers[n]=L.marker(d.coords,{icon:stIcon}).addTo(map)
+    .bindPopup(`<b>${n} Fire Station</b><br>${d.city} · ${d.units} units<br>${d.commander}`);
+}
+
+// Layers
+let heatLayer=null,heatOn=false;
+let evacCircles=[],evacOn=false;
+let spreadCircles=[],spreadOn=false;
+let fireMarker=null,routeLines=[];
+
+// ══════════════════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════════════════
+let fireLocation=null,incidents=[],allETAs=[];
+let stVisible=true,thermalOn=false,droneTimer=null;
+let etaChartInst=null,histChartInst=null;
+let tlStep=0,tlInterval=null;
+let spreadInterval=null,spreadRadius=0;
+
+// ══════════════════════════════════════════════════════════
+// HELPERS
+// ══════════════════════════════════════════════════════════
+function haversine(a,b){
+  const R=6371,dL=(b[0]-a[0])*Math.PI/180,dN=(b[1]-a[1])*Math.PI/180;
+  const x=Math.sin(dL/2)**2+Math.cos(a[0]*Math.PI/180)*Math.cos(b[0]*Math.PI/180)*Math.sin(dN/2)**2;
+  return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
+}
+function getParams(){
+  return{
+    t:parseInt(document.getElementById('trafS').value),
+    w:parseInt(document.getElementById('wxS').value),
+    tau:parseInt(document.getElementById('todS').value),
+    sev:document.getElementById('sevSel').value,
+    type:document.getElementById('typeSel').value,
+  };
+}
+function updateParams(){
+  const p=getParams();
+  document.getElementById('trafV').textContent=TRAF_LBL[p.t];
+  document.getElementById('wxV').textContent=WX_LBL[p.w];
+  document.getElementById('todV').textContent=TOD_LBL[p.tau];
+  document.getElementById('mT').textContent=TRAF_LBL[p.t];
+  document.getElementById('mW').textContent=WX_LBL[p.w];
+  document.getElementById('mTOD').textContent=TOD_LBL[p.tau];
+  document.getElementById('mSev').textContent=p.sev;
+  if(fireLocation) runDispatch(fireLocation[0],fireLocation[1]);
+}
+updateParams();
+
+// ══════════════════════════════════════════════════════════
+// VOICE ALERT
+// ══════════════════════════════════════════════════════════
+function voiceAlert(stationName, eta, lat, lng){
+  if(!('speechSynthesis' in window)) return;
+  window.speechSynthesis.cancel();
+  const msg=new SpeechSynthesisUtterance(
+    `Fire emergency alert. ${stationName} Fire Station, please dispatch immediately. ` +
+    `Estimated arrival time: ${Math.round(eta)} minutes. ` +
+    `Fire location coordinates: ${lat.toFixed(2)}, ${lng.toFixed(2)}.`
+  );
+  msg.rate=0.95; msg.pitch=1.0; msg.volume=1.0;
+  const voices=speechSynthesis.getVoices();
+  const en=voices.find(v=>v.lang.startsWith('en'));
+  if(en) msg.voice=en;
+  window.speechSynthesis.speak(msg);
+}
+
+// ══════════════════════════════════════════════════════════
+// SMS / WHATSAPP ALERT
+// ══════════════════════════════════════════════════════════
+function showSMSAlert(station, eta, lat, lng, sev, type){
+  const d=STATIONS[station];
+  const now=new Date().toLocaleTimeString('en-IN',{hour12:false});
+  const incId='INC-'+Date.now().toString().slice(-6);
+  const msg=
+`🚨 FIRE EMERGENCY DISPATCH
+━━━━━━━━━━━━━━━━━━━━━
+Incident ID: ${incId}
+Station: ${station} Fire Station
+Commander: ${d.commander}
+Contact: ${d.phone}
+Units Assigned: ${d.units} trucks
+
+📍 Fire Location:
+Lat ${lat.toFixed(5)}, Lng ${lng.toFixed(5)}
+(Open Maps for turn-by-turn)
+
+🔥 Fire Type: ${type.toUpperCase()}
+⚠️  Severity: ${sev}
+⏱  ETA: ${eta.toFixed(1)} minutes
+
+Dispatched at: ${now}
+━━━━━━━━━━━━━━━━━━━━━
+[DEMO — In production, this alert
+ would be sent via Twilio SMS/WhatsApp
+ to the station commander's registered
+ number: ${d.phone}]`;
+
+  document.getElementById('smsMsg').textContent=msg;
+  document.getElementById('smsFooter').textContent=`${incId} · ${now} · PYROSENSE AI v2.0`;
+  const popup=document.getElementById('smsPopup');
+  popup.classList.add('on');
+  setTimeout(()=>popup.classList.remove('on'),10000);
+}
+
+// ══════════════════════════════════════════════════════════
+// INCIDENT TIMELINE
+// ══════════════════════════════════════════════════════════
+const TL_STAGES=['REPORTED','DISPATCH','EN ROUTE','ON SCENE','CONTAINED'];
+function startTimeline(etaMin){
+  if(tlInterval) clearInterval(tlInterval);
+  tlStep=0;
+  // Reset
+  for(let i=0;i<5;i++){
+    const d=document.getElementById('tls'+i);
+    d.classList.remove('done','active');
+  }
+  document.getElementById('tlFill').style.width='0%';
+
+  // Immediate: steps 0 and 1
+  document.getElementById('tls0').classList.add('done');
+  document.getElementById('tls1').classList.add('active');
+  document.getElementById('tlFill').style.width='12%';
+
+  const stepTimes=[0, 3000, etaMin*60000*0.7, etaMin*60000, etaMin*60000*1.3];
+  stepTimes.forEach((delay,i)=>{
+    if(i<2) return;
+    setTimeout(()=>{
+      for(let j=0;j<i;j++) document.getElementById('tls'+j).classList.replace('active','done')||document.getElementById('tls'+j).classList.add('done');
+      document.getElementById('tls'+(i-1)).classList.remove('active');
+      document.getElementById('tls'+(i-1)).classList.add('done');
+      document.getElementById('tls'+i).classList.add('active');
+      document.getElementById('tlFill').style.width=(i/4*100)+'%';
+    }, Math.min(delay, 30000)); // cap at 30s for demo
+  });
+}
+
+// ══════════════════════════════════════════════════════════
+// DANGER GAUGE
+// ══════════════════════════════════════════════════════════
+function updateGauge(type, w, sev){
+  const base=FIRE_TYPE_DANGER[type]||50;
+  const wx=WX_DANGER[w]||0;
+  const sevBonus={HIGH:20,MED:0,LOW:-15}[sev]||0;
+  let score=Math.min(100, base+wx+sevBonus);
+
+  const circ=document.getElementById('gCircle');
+  const circumference=201;
+  const offset=circumference-(score/100*circumference);
+  circ.style.strokeDashoffset=offset;
+
+  let color,label,scoreText;
+  if(score>=80){color=var2('--fire');scoreText='CRITICAL';label='EXTREME RISK — HEAVY GEAR REQUIRED';}
+  else if(score>=60){color=var2('--ember');scoreText='HIGH';label='HIGH RISK — FULL PROTECTION';}
+  else if(score>=40){color=var2('--yellow');scoreText='MODERATE';label='MODERATE RISK — STANDARD GEAR';}
+  else{color=var2('--green');scoreText='LOW';label='LOW RISK — NORMAL PROTOCOL';}
+
+  circ.style.stroke=color;
+  document.getElementById('gTxt').textContent=score;
+  document.getElementById('gScore').textContent=scoreText;
+  document.getElementById('gScore').style.color=color;
+  document.getElementById('gLabel').textContent=label;
+  document.getElementById('gLabel').style.color=color;
+}
+function var2(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim();}
+
+// ══════════════════════════════════════════════════════════
+// FIRE SPREAD SIMULATION
+// ══════════════════════════════════════════════════════════
+function startFireSpread(lat, lng, type){
+  spreadCircles.forEach(c=>map.removeLayer(c));
+  spreadCircles=[];
+  spreadRadius=50;
+  if(spreadInterval) clearInterval(spreadInterval);
+
+  const growRate = type==='forest'?30:type==='industrial'?20:12;
+
+  const drawSpread=()=>{
+    spreadCircles.forEach(c=>map.removeLayer(c));
+    spreadCircles=[];
+    const c1=L.circle([lat,lng],{radius:spreadRadius,color:'#FF3B1F',fillColor:'#FF3B1F',fillOpacity:0.15,weight:2,dashArray:'5,5'}).addTo(map);
+    const c2=L.circle([lat,lng],{radius:spreadRadius*0.6,color:'#FF8C00',fillColor:'#FF8C00',fillOpacity:0.2,weight:1}).addTo(map);
+    spreadCircles.push(c1,c2);
+  };
+
+  drawSpread();
+  spreadInterval=setInterval(()=>{
+    spreadRadius+=growRate;
+    if(spreadRadius>800) spreadRadius=800;
+    drawSpread();
+  }, 2000);
+}
+
+function toggleSpread(){
+  const btn=document.getElementById('spreadBtn');
+  if(!spreadCircles.length){showToast('❌ Report a fire first to see spread simulation',true);return;}
+  spreadOn=!spreadOn;
+  if(spreadOn){
+    spreadCircles.forEach(c=>map.addLayer(c));
+    btn.classList.add('on');
+  } else {
+    spreadCircles.forEach(c=>map.removeLayer(c));
+    btn.classList.remove('on');
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+// EVACUATION ZONES
+// ══════════════════════════════════════════════════════════
+function drawEvacZones(lat, lng){
+  evacCircles.forEach(c=>map.removeLayer(c));
+  evacCircles=[];
+  const zones=[
+    {r:500, color:'#FF3B1F', fillOpacity:0.12, label:'IMMEDIATE EVACUATION'},
+    {r:1000,color:'#FF8C00', fillOpacity:0.08, label:'URGENT EVACUATION'},
+    {r:2000,color:'#FFD600', fillOpacity:0.05, label:'PRECAUTIONARY'},
+  ];
+  zones.forEach(z=>{
+    const c=L.circle([lat,lng],{radius:z.r,color:z.color,fillColor:z.color,
+      fillOpacity:z.fillOpacity,weight:1.5,dashArray:'8,4'}).addTo(map);
+    evacCircles.push(c);
+  });
+  evacOn=true;
+  document.getElementById('evacBtn').classList.add('on');
+  document.getElementById('evacInfo').innerHTML=
+    `<div style="color:var(--fire);margin-bottom:4px;">🔴 0–500m: IMMEDIATE EVACUATION</div>
+     <div style="color:var(--ember);margin-bottom:4px;">🟠 500m–1km: URGENT EVACUATION</div>
+     <div style="color:var(--yellow);">🟡 1–2km: PRECAUTIONARY ZONE</div>`;
+}
+
+function toggleEvacuation(){
+  const btn=document.getElementById('evacBtn');
+  if(!evacCircles.length){showToast('❌ Report a fire first',true);return;}
+  evacOn=!evacOn;
+  if(evacOn){evacCircles.forEach(c=>map.addLayer(c));btn.classList.add('on');}
+  else{evacCircles.forEach(c=>map.removeLayer(c));btn.classList.remove('on');}
+}
+
+// ══════════════════════════════════════════════════════════
+// HEATMAP
+// ══════════════════════════════════════════════════════════
+function toggleHeatmap(){
+  const btn=document.getElementById('heatBtn');
+  if(!heatOn){
+    if(!heatLayer) heatLayer=L.heatLayer(HEAT_DATA,{radius:35,blur:25,maxZoom:10,
+      gradient:{0.2:'#003580',0.4:'#0090ff',0.6:'#ffaa00',0.8:'#ff5500',1.0:'#ff0000'}}).addTo(map);
+    else heatLayer.addTo(map);
+    heatOn=true; btn.classList.add('on');
+    showToast('🌡 Fire risk heatmap — red = high historical risk zones');
+  } else {
+    if(heatLayer) map.removeLayer(heatLayer);
+    heatOn=false; btn.classList.remove('on');
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+// CHARTS
+// ══════════════════════════════════════════════════════════
+function buildEtaChart(ranked){
+  const ctx=document.getElementById('etaChart').getContext('2d');
+  if(etaChartInst) etaChartInst.destroy();
+  etaChartInst=new Chart(ctx,{
+    type:'bar',
+    data:{
+      labels:ranked.map(s=>s.name),
+      datasets:[{
+        label:'ETA (min)',
+        data:ranked.map(s=>+s.eta.toFixed(1)),
+        backgroundColor:ranked.map((_,i)=>i===0?'rgba(255,59,31,0.7)':'rgba(30,144,255,0.3)'),
+        borderColor:ranked.map((_,i)=>i===0?'#FF3B1F':'#1e90ff'),
+        borderWidth:1,borderRadius:4,
+      }]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${c.parsed.y} min`}}},
+      scales:{
+        x:{ticks:{color:'#5a606b',font:{family:'Space Mono',size:8}},grid:{color:'rgba(255,255,255,0.03)'}},
+        y:{ticks:{color:'#5a606b',font:{family:'Space Mono',size:8}},grid:{color:'rgba(255,255,255,0.05)'},
+           title:{display:true,text:'ETA (min)',color:'#5a606b',font:{family:'Space Mono',size:8}}}
+      }
+    }
+  });
+}
+
+function buildHistChart(){
+  const ctx=document.getElementById('histChart').getContext('2d');
+  if(histChartInst) histChartInst.destroy();
+  histChartInst=new Chart(ctx,{
+    type:'line',
+    data:{
+      labels:incidents.map((_,i)=>`#${incidents.length-i}`).reverse(),
+      datasets:[{
+        label:'Response ETA',
+        data:[...allETAs].reverse().map(v=>+v.toFixed(1)),
+        borderColor:'#FF3B1F',backgroundColor:'rgba(255,59,31,0.08)',
+        pointBackgroundColor:'#FF3B1F',borderWidth:2,pointRadius:4,tension:0.3,fill:true,
+      }]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{ticks:{color:'#5a606b',font:{family:'Space Mono',size:8}},grid:{color:'rgba(255,255,255,0.03)'}},
+        y:{ticks:{color:'#5a606b',font:{family:'Space Mono',size:8}},grid:{color:'rgba(255,255,255,0.05)'},
+           title:{display:true,text:'ETA (min)',color:'#5a606b',font:{family:'Space Mono',size:8}}}
+      }
+    }
+  });
+}
+
+// ══════════════════════════════════════════════════════════
+// PREDICTIVE PRE-POSITIONING
+// ══════════════════════════════════════════════════════════
+function computePrePositioning(){
+  const highRisk=[
+    {name:"North Chennai (Industrial)",lat:13.16,lng:80.25,risk:0.95},
+    {name:"Sivakasi (Firecracker Zone)",lat:9.45,lng:77.80,risk:0.95},
+    {name:"Coimbatore Industrial Belt",lat:11.03,lng:76.97,risk:0.85},
+    {name:"Madurai City Centre",lat:9.93,lng:78.12,risk:0.80},
+    {name:"Chennai Port Area",lat:13.10,lng:80.29,risk:0.75},
+    {name:"Trichy Central Market",lat:10.79,lng:78.70,risk:0.65},
+  ];
+  const html=highRisk.map(z=>{
+    const nearest=Object.entries(STATIONS).map(([n,d])=>({
+      name:n,dist:haversine(d.coords,[z.lat,z.lng])
+    })).sort((a,b)=>a.dist-b.dist)[0];
+    const riskPct=Math.round(z.risk*100);
+    const col=riskPct>=90?'var(--fire)':riskPct>=75?'var(--ember)':'var(--yellow)';
+    return `<div style="padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.03);">
+      <div style="font-size:11px;font-weight:500;margin-bottom:3px;">${z.name}</div>
+      <div style="font-family:'Space Mono',monospace;font-size:8px;color:var(--muted);">
+        RISK: <span style="color:${col};">${riskPct}%</span> · 
+        STANDBY: <span style="color:var(--yellow);">${nearest.name}</span>
+      </div>
+    </div>`;
+  }).join('');
+  document.getElementById('prepos').innerHTML=html;
+}
+setTimeout(computePrePositioning, 1500);
+
+// ══════════════════════════════════════════════════════════
+// MAIN DISPATCH
+// ══════════════════════════════════════════════════════════
+function runDispatch(lat, lng){
+  fireLocation=[lat,lng];
+  const p=getParams();
+
+  const ranked=Object.entries(STATIONS).map(([name,data])=>{
+    const dist=haversine(data.coords,fireLocation);
+    const eta=predictETA(dist,p.t,p.w,p.tau,p.sev);
+    return{name,coords:data.coords,dist,eta,units:data.units};
+  }).sort((a,b)=>a.eta-b.eta);
+
+  const best=ranked[0];
+  const rl=RL.run(ranked,p.sev,p.t,p.w);
+
+  // Remove old layers
+  if(fireMarker) map.removeLayer(fireMarker);
+  routeLines.forEach(l=>map.removeLayer(l)); routeLines=[];
+
+  // Fire marker
+  const fIcon=L.divIcon({
+    html:`<div style="width:32px;height:32px;background:#FF3B1F;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:17px;border:3px solid rgba(255,255,255,0.3);box-shadow:0 0 20px rgba(255,59,31,0.8),0 0 40px rgba(255,59,31,0.3);animation:fp 0.9s ease-in-out infinite">🔥</div><style>@keyframes fp{0%,100%{transform:scale(1)}50%{transform:scale(1.2)}}</style>`,
+    className:'',iconSize:[32,32],iconAnchor:[16,16]});
+  fireMarker=L.marker([lat,lng],{icon:fIcon}).addTo(map)
+    .bindPopup(`🔥 <b>FIRE REPORTED</b><br>Severity: ${p.sev}<br>Type: ${p.type}`).openPopup();
+
+  // Route lines
+  routeLines.push(L.polyline([best.coords,[lat,lng]],{color:'#00FF87',weight:3,dashArray:'10,8',opacity:0.9}).addTo(map));
+  ranked.slice(1,3).forEach(s=>routeLines.push(
+    L.polyline([s.coords,[lat,lng]],{color:'rgba(255,255,255,0.12)',weight:1,dashArray:'4,8'}).addTo(map)));
+  map.fitBounds(routeLines[0].getBounds(),{padding:[80,80]});
+
+  // Evacuation + spread
+  drawEvacZones(lat,lng);
+  startFireSpread(lat,lng,p.type);
+  spreadOn=true; document.getElementById('spreadBtn').classList.add('on');
+
+  // Log
+  const inc={id:incidents.length+1,lat,lng,sev:p.sev,type:p.type,
+    station:best.name,eta:best.eta,dist:best.dist,time:new Date().toLocaleTimeString()};
+  incidents.unshift(inc);
+  allETAs.push(best.eta);
+
+  // Timeline
+  startTimeline(best.eta);
+
+  // Danger gauge
+  updateGauge(p.type,p.w,p.sev);
+
+  // Voice alert
+  voiceAlert(best.name, best.eta, lat, lng);
+
+  // SMS popup
+  setTimeout(()=>showSMSAlert(best.name,best.eta,lat,lng,p.sev,p.type), 1200);
+
+  // Update all UI
+  updateDispatchUI(best,ranked,rl,p,inc);
+  updateStats();
+  buildEtaChart(ranked);
+  buildHistChart();
+
+  // Header pills
+  document.getElementById('incPill').style.display='flex';
+  document.getElementById('ibadge').textContent=incidents.length;
+  document.getElementById('ibadge').classList.add('on');
+  if(incidents.length>1){
+    document.getElementById('multiPill').style.display='flex';
+    document.getElementById('multiTxt').textContent=`${incidents.length} INCIDENTS`;
+  }
+  document.getElementById('maphint').style.opacity='0';
+  showToast(`🚒 ${best.name} dispatched — ETA ${best.eta.toFixed(1)} min`);
+}
+
+function updateDispatchUI(best,ranked,rl,p,inc){
+  // Dispatch card
+  document.getElementById('dcard').classList.add('on');
+  document.getElementById('noInc').style.display='none';
+  document.getElementById('dsName').textContent=best.name+' Fire Station';
+  document.getElementById('etaBig').textContent=best.eta.toFixed(1);
+  document.getElementById('acoords').textContent=`${inc.lat.toFixed(4)}, ${inc.lng.toFixed(4)}`;
+
+  // Countdown bar
+  const fill=document.getElementById('cbarFill');
+  fill.style.transition='none';fill.style.width='100%';
+  setTimeout(()=>{fill.style.transition=`width ${best.eta*60}s linear`;fill.style.width='0%';},50);
+
+  // RL
+  document.getElementById('rlS').textContent=rl.state;
+  document.getElementById('rlA').textContent='DISPATCH '+rl.action.toUpperCase();
+  document.getElementById('rlR').textContent=rl.reward;
+  document.getElementById('rlQ').textContent=rl.qVal;
+  document.getElementById('rlEp').textContent=RL.episodes;
+  document.getElementById('rlEps2').textContent=RL.episodes;
+  if(RL.rewards.length){
+    const avg=RL.rewards.reduce((a,b)=>a+b)/RL.rewards.length;
+    document.getElementById('rlAvg').textContent=avg.toFixed(2);
+  }
+  document.getElementById('rlBest').textContent=rl.action.toUpperCase();
+
+  // ML tab
+  document.getElementById('mD').textContent=best.dist.toFixed(1)+' km';
+  document.getElementById('mPred').textContent=best.eta.toFixed(1)+' min';
+  const rfC=Math.min(97,70+Math.random()*20).toFixed(0);
+  const xgC=Math.min(97,68+Math.random()*22).toFixed(0);
+  document.getElementById('rfC').textContent=rfC+'%';
+  document.getElementById('xgC').textContent=xgC+'%';
+  setTimeout(()=>{
+    document.getElementById('rfBar').style.width=rfC+'%';
+    document.getElementById('xgBar').style.width=xgC+'%';
+  },300);
+
+  // Map overlay
+  document.getElementById('dovl').classList.add('on');
+  document.getElementById('doinfo').innerHTML=
+    `STATION: ${best.name}<br>DIST: ${best.dist.toFixed(1)} km<br>ETA: ${best.eta.toFixed(1)} min<br>UNITS: ${STATIONS[best.name].units} trucks`;
+  document.getElementById('navlnk').href=
+    `https://www.google.com/maps/dir/${best.coords[0]},${best.coords[1]}/${inc.lat},${inc.lng}`;
+
+  // Stations ranked
+  document.getElementById('allSt').innerHTML=ranked.slice(0,10).map((s,i)=>`
+    <div class="sti ${i===0?'best':''}" onclick="focusSt('${s.name}')">
+      <div>
+        <div class="stn">${i===0?'★ ':''}${s.name}</div>
+        <div style="font-size:10px;color:var(--muted);">${STATIONS[s.name].city} · ${STATIONS[s.name].units} units</div>
+      </div>
+      <div class="stm">${s.eta.toFixed(1)} min<br>${s.dist.toFixed(1)} km</div>
+    </div>`).join('');
+
+  // Incident log
+  renderInc();
+}
+
+function renderInc(){
+  const el=document.getElementById('incLog');
+  if(!incidents.length){el.innerHTML=`<div style="font-family:'Space Mono',monospace;font-size:9px;color:var(--muted);letter-spacing:1px;padding:6px 0;">NO ACTIVE INCIDENTS</div>`;return;}
+  el.innerHTML=incidents.map(inc=>{
+    const c={HIGH:'var(--fire)',MED:'var(--yellow)',LOW:'var(--green)'}[inc.sev];
+    return `<div class="inci" onclick="focusInc(${inc.lat},${inc.lng})">
+      <div class="incidot" style="background:${c}"></div>
+      <div class="incibody">
+        <div class="incititle">${inc.type.charAt(0).toUpperCase()+inc.type.slice(1)} Fire #${inc.id}</div>
+        <div class="incisub">${inc.station} · ${inc.eta.toFixed(1)} min · ${inc.time}</div>
+      </div>
+      <span class="sevbadge s${inc.sev[0]}">${inc.sev}</span>
+    </div>`;
+  }).join('');
+}
+
+function updateStats(){
+  document.getElementById('sTotal').textContent=incidents.length;
+  const avg=allETAs.reduce((a,b)=>a+b)/allETAs.length;
+  document.getElementById('sAvg').textContent=avg.toFixed(1)+' min';
+  document.getElementById('sFast').textContent=Math.min(...allETAs).toFixed(1)+' min';
+  document.getElementById('sUnits').textContent=incidents.length;
+}
+
+// ══════════════════════════════════════════════════════════
+// WEATHER API
+// ══════════════════════════════════════════════════════════
+async function fetchWeather(lat, lng){
+  // Using Open-Meteo (no API key needed, free)
+  try{
+    const url=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current_weather=true&hourly=relativehumidity_2m,windspeed_10m&timezone=auto`;
+    const res=await fetch(url);
+    const data=await res.json();
+    const cw=data.current_weather;
+    const wcode=cw.weathercode;
+    const temp=cw.temperature;
+    const wind=cw.windspeed;
+    const hum=data.hourly?.relativehumidity_2m?.[0]||'—';
+
+    let icon='🌤',main='CLEAR',wxIdx=0;
+    if(wcode>=80){icon='⛈';main='STORM';wxIdx=3;}
+    else if(wcode>=60){icon='🌧';main='RAIN';wxIdx=1;}
+    else if(wcode>=40){icon='🌫';main='FOG';wxIdx=2;}
+    else if(wcode>=3){icon='⛅';main='CLOUDY';wxIdx=0;}
+    else{icon='☀️';main='CLEAR';wxIdx=0;}
+
+    document.getElementById('wxIcon').textContent=icon;
+    document.getElementById('wxMain').textContent=main;
+    document.getElementById('wxTemp').textContent=temp+'°C';
+    document.getElementById('wxWind').textContent=wind+' km/h';
+    document.getElementById('wxHum').textContent=hum+'%';
+    document.getElementById('wthPill').style.display='flex';
+    document.getElementById('wthTxt').textContent=`${icon} ${temp}°C`;
+
+    // Auto-set weather slider
+    document.getElementById('wxS').value=wxIdx;
+    updateParams();
+    showToast(`🌤 Live weather fetched: ${main}, ${temp}°C, wind ${wind} km/h`);
+  }catch(e){
+    showToast('⚠️ Weather API unavailable — using slider values',true);
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+// MAP CLICK / SEARCH / GPS
+// ══════════════════════════════════════════════════════════
+map.on('click',e=>{
+  fetchWeather(e.latlng.lat,e.latlng.lng);
+  runDispatch(e.latlng.lat,e.latlng.lng);
+});
+
+async function searchLocation(){
+  const q=document.getElementById('searchInput').value.trim();
+  if(!q)return;
+  showToast('🔍 Geocoding location…');
+  try{
+    const res=await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1&countrycodes=in`);
+    const data=await res.json();
+    if(data.length){
+      const la=+data[0].lat,lo=+data[0].lon;
+      map.setView([la,lo],13);
+      fetchWeather(la,lo);
+      runDispatch(la,lo);
+    }else showToast('❌ Location not found',true);
+  }catch{showToast('❌ Search error',true);}
+}
+document.getElementById('searchInput').addEventListener('keydown',e=>{if(e.key==='Enter')searchLocation();});
+
+function useGPS(){
+  if(!navigator.geolocation){showToast('❌ Geolocation not supported',true);return;}
+  showToast('📡 Acquiring GPS position…');
+  navigator.geolocation.getCurrentPosition(p=>{
+    const la=p.coords.latitude,lo=p.coords.longitude;
+    map.setView([la,lo],14);
+    fetchWeather(la,lo);
+    runDispatch(la,lo);
+  },()=>showToast('❌ GPS permission denied',true));
+}
+
+// ══════════════════════════════════════════════════════════
+// DRONE
+// ══════════════════════════════════════════════════════════
+function analyzeImg(e){
+  const file=e.target.files[0]; if(!file)return;
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    const img=new Image();
+    img.onload=()=>{
+      const c=document.createElement('canvas');
+      c.width=img.width;c.height=img.height;
+      const ctx=c.getContext('2d');ctx.drawImage(img,0,0);
+      const d=ctx.getImageData(0,0,c.width,c.height).data;
+      let red=0,orange=0;
+      for(let i=0;i<d.length;i+=4){
+        if(d[i]>200&&d[i+1]<100&&d[i+2]<80) red++;
+        if(d[i]>200&&d[i+1]>80&&d[i+1]<160&&d[i+2]<60) orange++;
+      }
+      const total=red+orange;
+      const pct=((total/(c.width*c.height))*100).toFixed(1);
+      const scr=document.getElementById('dscreen');
+      scr.style.backgroundImage=`url(${ev.target.result})`;
+      document.getElementById('dlbl').style.display='none';
+      document.getElementById('dhud').classList.add('on');
+      document.getElementById('dPx').textContent=total.toLocaleString();
+      document.getElementById('dCov').textContent=pct+'%';
+      document.getElementById('dStatus').textContent='ACTIVE';
+      if(total>2000){
+        document.getElementById('fbadge').style.display='block';
+        document.getElementById('hudF').style.display='inline';
+        const slv=total>8000?'CRITICAL':total>4000?'HIGH':'MODERATE';
+        document.getElementById('dSev').textContent=slv;
+        document.getElementById('sysDot').classList.add('red');
+        document.getElementById('sysTxt').textContent='FIRE CONFIRMED';
+        showToast(`🔥 Drone confirms fire — ${slv} (${pct}% coverage)`);
+        startDroneTimer();
+      }else{
+        document.getElementById('dSev').textContent='NONE DETECTED';
+        showToast('✅ No fire signature in image');
+      }
+    };
+    img.src=ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function startDroneTimer(){
+  let s=0;
+  if(droneTimer)clearInterval(droneTimer);
+  droneTimer=setInterval(()=>{
+    s++;document.getElementById('hudT').textContent=
+      String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
+  },1000);
+}
+
+function toggleThermal(){
+  thermalOn=!thermalOn;
+  document.getElementById('dscreen').style.filter=thermalOn?'hue-rotate(200deg) saturate(2) contrast(1.3)':'';
+  document.getElementById('thBtn').textContent=thermalOn?'🌡 THERMAL ON — CLICK TO DISABLE':'🌡 TOGGLE THERMAL OVERLAY';
+  showToast(thermalOn?'🌡 Thermal imaging enabled':'Thermal imaging disabled');
+}
+
+function deployDrone(){
+  if(!fireLocation){showToast('❌ No active incident',true);return;}
+  document.getElementById('dStatus').textContent='DEPLOYED';
+  showToast('🚁 Drone deployed to fire location!');
+  switchTab(2);
+  let bat=87;
+  const bi=setInterval(()=>{
+    bat-=0.4;if(bat>0)document.getElementById('dBat').textContent=bat.toFixed(0)+'%';
+    else clearInterval(bi);
+  },5000);
+}
+
+// ══════════════════════════════════════════════════════════
+// SIM INCIDENT
+// ══════════════════════════════════════════════════════════
+const SIM_LOCS=[[13.05,80.21],[11.02,76.98],[9.94,78.10],[10.77,78.71],[11.65,78.12],[12.90,79.15]];
+function addSimInc(){
+  const loc=SIM_LOCS[incidents.length%SIM_LOCS.length];
+  const sevs=['HIGH','MED','LOW'],types=['structure','vehicle','forest','industrial'];
+  document.getElementById('sevSel').value=sevs[Math.floor(Math.random()*3)];
+  document.getElementById('typeSel').value=types[Math.floor(Math.random()*4)];
+  fetchWeather(loc[0],loc[1]);
+  runDispatch(loc[0],loc[1]);
+  map.setView(loc,10);
+  showToast('🔴 Simulated incident added!');
+}
+
+// ══════════════════════════════════════════════════════════
+// TOGGLE HELPERS
+// ══════════════════════════════════════════════════════════
+function toggleStations(){
+  const btn=document.getElementById('stBtn');
+  stVisible=!stVisible;
+  Object.values(stMarkers).forEach(m=>stVisible?map.addLayer(m):map.removeLayer(m));
+  btn.classList.toggle('on',!stVisible);
+}
+function focusSt(n){map.setView(STATIONS[n].coords,13);stMarkers[n].openPopup();}
+function focusInc(lat,lng){map.setView([lat,lng],13);}
+
+// ══════════════════════════════════════════════════════════
+// TAB SWITCHING
+// ══════════════════════════════════════════════════════════
+function switchTab(i){
+  document.querySelectorAll('.itab').forEach((b,j)=>b.classList.toggle('active',i===j));
+  document.querySelectorAll('.tpane').forEach((p,j)=>p.classList.toggle('active',i===j));
+}
+
+// ══════════════════════════════════════════════════════════
+// INIT ALL-STATIONS LIST
+// ══════════════════════════════════════════════════════════
+document.getElementById('allSt').innerHTML=Object.entries(STATIONS).map(([n,d])=>`
+  <div class="sti" onclick="focusSt('${n}')">
+    <div><div class="stn">${n}</div><div style="font-size:10px;color:var(--muted);">${d.city}</div></div>
+    <div class="stm">${d.units} units<br>READY</div>
+  </div>`).join('');
+
+// ══════════════════════════════════════════════════════════
+// CLOCK + CURSOR + TOAST
+// ══════════════════════════════════════════════════════════
+setInterval(()=>document.getElementById('clk').textContent=new Date().toLocaleTimeString('en-IN',{hour12:false}),1000);
+
+const cur=document.getElementById('cur');
+const mapEl=document.getElementById('map');
+mapEl.addEventListener('mouseenter',()=>{cur.style.display='block';document.body.style.cursor='none';});
+mapEl.addEventListener('mouseleave',()=>{cur.style.display='none';document.body.style.cursor='crosshair';});
+document.addEventListener('mousemove',e=>{cur.style.left=e.clientX+'px';cur.style.top=e.clientY+'px';});
+
+let toastT;
+function showToast(msg,err=false){
+  const t=document.getElementById('toast');
+  t.textContent=msg;
+  t.style.borderLeftColor=err?'#555':'var(--fire)';
+  t.classList.add('show');
+  clearTimeout(toastT);
+  toastT=setTimeout(()=>t.classList.remove('show'),3800);
+}
+
+// ══════════════════════════════════════════════════════════
+// BOOT SEQUENCE
+// ══════════════════════════════════════════════════════════
+setTimeout(()=>showToast('🟢 PYROSENSE v2.0 online — Tamil Nadu network active'),800);
+setTimeout(()=>showToast('💡 Click map to report fire — all features will activate'),4200);
+// Preload voices
+window.speechSynthesis.getVoices();
+speechSynthesis.onvoiceschanged=()=>speechSynthesis.getVoices();
+</script>
+</body>
+</html>
